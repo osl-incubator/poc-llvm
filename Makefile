@@ -22,7 +22,7 @@ clean-optional:
 .ONESHELL:
 .PHONY: cmake-build
 cmake-build: clean-optional
-	mkdir -p $(ROOT_DIR)/bin
+	mkdir -p $(ROOT_DIR)/build/bin
 	cd $(ROOT_DIR)/build
 	cmake \
 		-GNinja \

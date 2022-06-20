@@ -51,3 +51,28 @@
 #include <llvm/Transforms/Scalar.h>
 
 #include "llvm_arrow.h"
+
+std::unique_ptr<llvm::LLVMContext> code_context;
+std::unique_ptr<llvm::IRBuilder<>> code_builder;
+std::unique_ptr<llvm::Module> code_module;
+
+auto initialize() -> void {
+  // context
+  std::unique_ptr<llvm::LLVMContext> code_context =
+      std::make_unique<llvm::LLVMContext>();
+  // builder
+  std::unique_ptr<llvm::IRBuilder<>> code_builder =
+      std::unique_ptr<llvm::IRBuilder<>>(new llvm::IRBuilder<>(*code_context));
+  // module
+  std::unique_ptr<llvm::Module> code_module =
+      std::make_unique<llvm::Module>("Module", *code_context);
+}
+
+auto llvm_arrow_main() -> int {
+  initialize();
+
+  auto const_int = llvm::ConstantInt::getSigned(
+      (llvm::Type::getInt32Ty(*code_context)), 10);
+
+  return 0;
+}
