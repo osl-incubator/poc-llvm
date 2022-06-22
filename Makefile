@@ -36,3 +36,36 @@ cmake-build: clean-optional
 		${CMAKE_EXTRA_FLAGS} \
 		..
 	cmake --build .
+
+.ONESHELL:
+.PHONY: llvm-ir-clean
+llvm-ir-clean:
+	cd pocllvm/ir
+	rm -f *.o
+	cd pocllvm/ir/external
+	rm -f *.o
+
+.ONESHELL:
+.PHONY: llvm-ir-build-external
+llvm-ir-build-external: llvm-ir-clean
+	cd pocllvm/ir/external
+	clang -fPIC -c add.c -o add.o
+
+
+.ONESHELL:
+.PHONY: llvm-ir-build
+llvm-ir-build: llvm-ir-clean llvm-ir-build-external
+	cd pocllvm/ir
+	clang \
+		main.ll \
+		function.ll \
+		-o pocllvmir.o \
+		-Wl,-rpath,external/add.o \
+		external/add.o
+
+
+.ONESHELL:
+.PHONY: llvm-ir-run
+llvm-ir-run: llvm-ir-build
+	cd pocllvm/ir
+	./pocllvmir.o
