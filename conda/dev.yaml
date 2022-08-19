@@ -11,9 +11,11 @@ dependencies:
 - cmake
 - llvmdev 13.*
 - lld 13.*
+- meson
 - ninja
+- pkg-config
 # run
-- arrow-cpp 7.*
+- arrow-cpp 9.*
 - cli11
 - glog
 # dev

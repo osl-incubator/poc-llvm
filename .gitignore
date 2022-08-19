@@ -34,3 +34,6 @@
 build/*
 bin/*
 _tmp/*
+
+# IDE
+.vscode

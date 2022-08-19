@@ -38,8 +38,8 @@ jobs:
         activate-environment: arx
         environment-file: conda/dev.yaml
 
-    - name: build using cmake
-      run: make cmake-build
+    - name: build
+      run: make build
 
     - name: lint
       run: |
