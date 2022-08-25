@@ -8,6 +8,7 @@ declare i32 @puts(i8* nocapture) nounwind
 declare i32 @function()
 declare i32 @add(i32, i32)
 declare i32 @printf(i8*, ...)
+declare i32* @boolean_scalar()
 
 ; Definition of main function
 define i32 @main() {   ; i32()*

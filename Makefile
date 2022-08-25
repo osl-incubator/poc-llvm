@@ -29,34 +29,103 @@ build: clean-optional
 .ONESHELL:
 .PHONY: llvm-ir-clean
 llvm-ir-clean:
-	cd pocllvm/ir
-	rm -f *.o
-	cd pocllvm/ir/external
-	rm -f *.o
+	rm -f pocllvm/ir/*.o
+	rm -f pocllvm/ir/*.so
+	rm -f pocllvm/ir/external/*.o
+	rm -f pocllvm/ir/external/lib/*.so
 
 .ONESHELL:
 .PHONY: llvm-ir-build-external
 llvm-ir-build-external: llvm-ir-clean
+	set -ex
 	cd pocllvm/ir/external
-	clang -fPIC -c add.c -o add.o
+	mkdir -p lib
+
+	# create the "simple-math" object
+	clang++ -fPIC \
+		-I${CONDA_PREFIX}/include \
+		-I./ \
+		-L${CONDA_PREFIX}/lib \
+		-c simple-math.c \
+		-o simple-math.o
+
+	# create the "simple-math" shared object
+	clang -shared -o lib/libsimple-math.so simple-math.o
+
+	# create the "simple-math" static object
+	ar -rv lib/simple-math.a simple-math.o
+
+	# create the arrow-wrap object
+	clang++ -fPIC \
+		-I${CONDA_PREFIX}/include \
+		-I./ \
+		-L${CONDA_PREFIX}/lib \
+		-larrow \
+		-c \
+		-o arrow-wrap.o \
+		arrow-wrap.cpp
+
+	# create the arrow-wrap shared object
+	clang -shared -o ./lib/libarrow-wrap.so arrow-wrap.o
+
+	# create the arrow-wrap static object
+	ar -rv ./lib/arrow-wrap.a arrow-wrap.o
+
+.PHONY: test-externals
+.ONESHELL:
+test-externals:  llvm-ir-build-external
+	set -ex
+	$(eval EX_PWD :=${PWD}/pocllvm/ir/external)
+	cd ${EX_PWD}
+
+	clang++ \
+		-fPIC \
+		-I${CONDA_PREFIX}/include \
+		-I${EX_PWD}/ \
+		-L${CONDA_PREFIX}/lib \
+		-L${EX_PWD}/lib/ \
+		-larrow \
+		-lsimple-math \
+		-larrow-wrap \
+		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
+		-Wl,-rpath,${EX_PWD}/lib/libsimple-math.so \
+		-Wl,-rpath,${EX_PWD}/lib/libarrow-wrap.so \
+		-o test_externals.o \
+		-v \
+		test_externals.cpp
+
+	echo "[II] file compiled."
+	chmod +x ./test_externals.o
+	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${EX_PWD}/lib" ./test_externals.o
+
 
 .ONESHELL:
 .PHONY: llvm-ir-build
 llvm-ir-build: llvm-ir-clean llvm-ir-build-external
+	set -ex
 	cd pocllvm/ir
 	clang -v \
 		main.ll \
 		function.ll \
+		arrow.ll \
 		-o pocllvmir.o \
-		-Wl,-rpath,external/add.o \
+		-I${CONDA_PREFIX}/include \
+		-I./external \
+		-L${CONDA_PREFIX}/lib/ \
+		-larrow \
+		-L./external/ \
+		-larrow-wrap.o \
+		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
+		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow-glib.so \
+		-Wl,-rpath,./external/arrow-wrap.o \
+		-Wl,-rpath,./external/add.o \
+		-lstdc++ \
 		external/add.o \
-		${CONDA_PREFIX}/lib/libarrow-dataset-glib.so \
-		${CONDA_PREFIX}/lib/libarrow-flight-glib.so \
-		${CONDA_PREFIX}/lib/libarrow-glib.so
+		external/arrow-wrap.o
 
 
 .ONESHELL:
 .PHONY: llvm-ir-run
 llvm-ir-run: llvm-ir-build
 	cd pocllvm/ir
-	./pocllvmir.o
+	LD_LIBRARY_PATH=${CONDA_PREFIX}/lib  ./pocllvmir.o
