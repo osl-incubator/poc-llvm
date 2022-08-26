@@ -75,53 +75,58 @@ llvm-ir-build-external: llvm-ir-clean
 .ONESHELL:
 test-externals:  llvm-ir-build-external
 	set -ex
-	$(eval EX_PWD :=${PWD}/pocllvm/ir/external)
-	cd ${EX_PWD}
+	$(eval REAL_PWD :=${PWD}/pocllvm/ir/external)
+	cd ${REAL_PWD}
 
 	clang++ \
 		-fPIC \
 		-I${CONDA_PREFIX}/include \
-		-I${EX_PWD}/ \
+		-I${REAL_PWD}/ \
 		-L${CONDA_PREFIX}/lib \
-		-L${EX_PWD}/lib/ \
+		-L${REAL_PWD}/lib/ \
 		-larrow \
 		-lsimple-math \
 		-larrow-wrap \
 		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-		-Wl,-rpath,${EX_PWD}/lib/libsimple-math.so \
-		-Wl,-rpath,${EX_PWD}/lib/libarrow-wrap.so \
+		-Wl,-rpath,${REAL_PWD}/lib/libsimple-math.so \
+		-Wl,-rpath,${REAL_PWD}/lib/libarrow-wrap.so \
 		-o test_externals.o \
 		-v \
-		test_externals.cpp
+		test_externals.cpp \
+		${REAL_PWD}/lib/libsimple-math.so \
+		${REAL_PWD}/lib/libarrow-wrap.so
+
 
 	echo "[II] file compiled."
 	chmod +x ./test_externals.o
-	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${EX_PWD}/lib" ./test_externals.o
+	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${REAL_PWD}/lib" ./test_externals.o
 
 
 .ONESHELL:
 .PHONY: llvm-ir-build
 llvm-ir-build: llvm-ir-clean llvm-ir-build-external
 	set -ex
-	cd pocllvm/ir
-	clang -v \
-		main.ll \
-		function.ll \
-		arrow.ll \
+	$(eval REAL_PWD :=${PWD}/pocllvm/ir)
+	cd ${REAL_PWD}
+
+	clang++ -v \
+		-fPIC \
 		-o pocllvmir.o \
 		-I${CONDA_PREFIX}/include \
-		-I./external \
+		-I${REAL_PWD}/external \
 		-L${CONDA_PREFIX}/lib/ \
+		-L${REAL_PWD}/external/lib \
 		-larrow \
-		-L./external/ \
-		-larrow-wrap.o \
+		-larrow-wrap \
+		-lsimple-math \
 		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow-glib.so \
-		-Wl,-rpath,./external/arrow-wrap.o \
-		-Wl,-rpath,./external/add.o \
+		-Wl,-rpath,${REAL_PWD}/external/lib/libarrow-wrap.so \
+		-Wl,-rpath,${REAL_PWD}/external/lib/libsimple-math.so \
 		-lstdc++ \
-		external/add.o \
-		external/arrow-wrap.o
+		-v \
+		main.ll \
+		function.ll \
+		arrow.ll
 
 
 .ONESHELL:
