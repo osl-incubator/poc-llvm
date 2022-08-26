@@ -46,7 +46,7 @@ llvm-ir-build-external: llvm-ir-clean
 		-I${CONDA_PREFIX}/include \
 		-I./ \
 		-L${CONDA_PREFIX}/lib \
-		-c simple-math.c \
+		-c simple-math.cpp \
 		-o simple-math.o
 
 	# create the "simple-math" shared object
