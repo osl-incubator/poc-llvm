@@ -1,0 +1,3 @@
+struct CustomFloat {
+  float value;
+};

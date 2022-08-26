@@ -18,10 +18,10 @@ deps = [
   dependency('glog'),
 ]
 
-inc = include_directories('./pocllvm/include')
+inc = include_directories('./src')
 
 project_src_files = files(
-  PROJECT_PATH + '/pocllvm/src/llvm_arrow.cpp',
+  PROJECT_PATH + '/src/llvm-arrow.cpp',
 )
 
 gtest_dep = dependency('gtest', main : true, required: get_option('dev'))
@@ -43,7 +43,7 @@ endif
 
 pocllvm_exe = executable(
   'pocllvm',
-  project_src_files + files(PROJECT_PATH + '/pocllvm/src/main.cpp'),
+  project_src_files + files(PROJECT_PATH + '/src/main.cpp'),
   dependencies : deps,
   include_directories : inc,
   install : true)

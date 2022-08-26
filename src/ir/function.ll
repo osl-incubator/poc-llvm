@@ -2,7 +2,7 @@
 
 declare i32 @puts(i8*)
 
-define i32 @function() {
+define i32 @wrap_puts() {
   call i32 @puts(i8* getelementptr inbounds ([16 x i8], [16 x i8]* @msg, i32 0, i32 0))
   ret i32 0
 }

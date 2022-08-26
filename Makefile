@@ -14,8 +14,8 @@ clean-optional:
 	mkdir -p build
 
 .ONESHELL:
-.PHONY: build
-build: clean-optional
+.PHONY: build-cpp
+build-cpp: clean-optional
 	set -ex
 	meson setup \
 		--prefix ${CONDA_PREFIX} \
@@ -27,19 +27,12 @@ build: clean-optional
 	meson compile -C build
 
 .ONESHELL:
-.PHONY: llvm-ir-clean
-llvm-ir-clean:
-	rm -f pocllvm/ir/*.o
-	rm -f pocllvm/ir/*.so
-	rm -f pocllvm/ir/external/*.o
-	rm -f pocllvm/ir/external/lib/*.so
-
-.ONESHELL:
-.PHONY: llvm-ir-build-external
-llvm-ir-build-external: llvm-ir-clean
+.PHONY: build-cpp-libs
+build-cpp-libs: build-cpp
 	set -ex
-	cd pocllvm/ir/external
-	mkdir -p lib
+	mkdir -p build/lib
+
+	cd src
 
 	# create the "simple-math" object
 	clang++ -fPIC \
@@ -47,13 +40,17 @@ llvm-ir-build-external: llvm-ir-clean
 		-I./ \
 		-L${CONDA_PREFIX}/lib \
 		-c simple-math.cpp \
-		-o simple-math.o
+		-o ../build/lib/simple-math.o
 
 	# create the "simple-math" shared object
-	clang -shared -o lib/libsimple-math.so simple-math.o
+	clang -shared \
+		-o ../build/lib/libsimple-math.so \
+		../build/lib/simple-math.o
 
 	# create the "simple-math" static object
-	ar -rv lib/simple-math.a simple-math.o
+	ar -rv \
+		../build/lib/simple-math.a \
+		../build/lib/simple-math.o
 
 	# create the arrow-wrap object
 	clang++ -fPIC \
@@ -62,73 +59,135 @@ llvm-ir-build-external: llvm-ir-clean
 		-L${CONDA_PREFIX}/lib \
 		-larrow \
 		-c \
-		-o arrow-wrap.o \
+		-o ../build/lib/arrow-wrap.o \
 		arrow-wrap.cpp
 
 	# create the arrow-wrap shared object
-	clang -shared -o ./lib/libarrow-wrap.so arrow-wrap.o
+	clang -shared \
+		-o ../build/lib/libarrow-wrap.so \
+		../build/lib/arrow-wrap.o
 
 	# create the arrow-wrap static object
-	ar -rv ./lib/arrow-wrap.a arrow-wrap.o
+	ar -rv \
+		../build/lib/arrow-wrap.a \
+		../build/lib/arrow-wrap.o
 
-.PHONY: test-externals
 .ONESHELL:
-test-externals:  llvm-ir-build-external
+.PHONY: test-cpp-libs
+test-cpp-libs: build-cpp-libs
 	set -ex
-	$(eval REAL_PWD :=${PWD}/pocllvm/ir/external)
-	cd ${REAL_PWD}
+
+	$(eval PROJECT_ROOT :=${PWD})
+	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval SRC_DIR :=${PROJECT_ROOT}/src)
 
 	clang++ \
 		-fPIC \
 		-I${CONDA_PREFIX}/include \
-		-I${REAL_PWD}/ \
+		-I${SRC_DIR}/ \
 		-L${CONDA_PREFIX}/lib \
-		-L${REAL_PWD}/lib/ \
+		-L${BUILD_DIR}/lib/ \
 		-larrow \
 		-lsimple-math \
 		-larrow-wrap \
 		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-		-Wl,-rpath,${REAL_PWD}/lib/libsimple-math.so \
-		-Wl,-rpath,${REAL_PWD}/lib/libarrow-wrap.so \
-		-o test_externals.o \
+		-Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
+		-Wl,-rpath,${BUILD_DIR}/lib/libarrow-wrap.so \
+		-o ${BUILD_DIR}/lib/test_externals.o \
 		-v \
-		test_externals.cpp
+		${PROJECT_ROOT}/tests/test_externals.cpp
 
 
 	echo "[II] file compiled."
-	chmod +x ./test_externals.o
-	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${REAL_PWD}/lib" ./test_externals.o
+	chmod +x ${BUILD_DIR}/lib/test_externals.o
+	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${BUILD_DIR}/lib" ${BUILD_DIR}/lib/test_externals.o
 
 
 .ONESHELL:
-.PHONY: llvm-ir-build
-llvm-ir-build: llvm-ir-clean llvm-ir-build-external
+.PHONY: build-llvm-ir-file
+build-llvm-ir-file:
 	set -ex
-	$(eval REAL_PWD :=${PWD}/pocllvm/ir)
-	cd ${REAL_PWD}
+	$(eval PROJECT_ROOT :=${PWD})
+	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval SRC_DIR :=${PWD}/src)
+	cd ${SRC_DIR}
 
+	echo ">>> llc ${FILE_IR}.ll"
+	llc --relocation-model=pic \
+		${SRC_DIR}/ir/${FILE_IR}.ll \
+		-filetype=obj \
+		-o ${BUILD_DIR}/lib/ll${FILE_IR}.o \
+		--load=${BUILD_DIR}/lib
+
+.ONESHELL:
+.PHONY: build-llvm-ir
+build-llvm-ir: build-cpp-libs
+	set -ex
+	$(eval PROJECT_ROOT :=${PWD})
+	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval SRC_DIR :=${PWD}/src)
+
+	$(MAKE) build-llvm-ir-file FILE_IR=function
+	$(MAKE) build-llvm-ir-file FILE_IR=arrow
+	$(MAKE) build-llvm-ir-file FILE_IR=main
+
+	echo ">>> bundle .o files"
 	clang++ -v \
 		-fPIC \
-		-o pocllvmir.o \
+		-o ${BUILD_DIR}/pocllvmir \
 		-I${CONDA_PREFIX}/include \
-		-I${REAL_PWD}/external \
+		-I${SRC_DIR} \
+		-L${BUILD_DIR}/lib \
 		-L${CONDA_PREFIX}/lib/ \
-		-L${REAL_PWD}/external/lib \
+		-fuse-ld=lld \
 		-larrow \
 		-larrow-wrap \
 		-lsimple-math \
 		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-		-Wl,-rpath,${REAL_PWD}/external/lib/libarrow-wrap.so \
-		-Wl,-rpath,${REAL_PWD}/external/lib/libsimple-math.so \
+		-Wl,-rpath,${BUILD_DIR}/lib/libarrow-wrap.so \
+		-Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
 		-lstdc++ \
 		-v \
-		main.ll \
-		function.ll \
-		arrow.ll
+		${BUILD_DIR}/lib/llmain.o \
+		${BUILD_DIR}/lib/llfunction.o \
+		${BUILD_DIR}/lib/llarrow.o
 
 
 .ONESHELL:
-.PHONY: llvm-ir-run
-llvm-ir-run: llvm-ir-build
-	cd pocllvm/ir
-	LD_LIBRARY_PATH=${CONDA_PREFIX}/lib  ./pocllvmir.o
+.PHONY: test-llvm-ir
+test-llvm-ir: build-llvm-ir
+	$(eval BUILD_DIR :=${PWD}/build)
+	cd ${BUILD_DIR}
+	LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${BUILD_DIR}/lib ./pocllvmir
+
+
+.ONESHELL:
+.PHONY: test-llvm-ir-objects
+test-llvm-ir-objects:
+	set -ex
+
+	$(eval PROJECT_ROOT :=${PWD})
+	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval SRC_DIR :=${PROJECT_ROOT}/src)
+
+	clang++ \
+		-fPIC \
+		-I${CONDA_PREFIX}/include \
+		-I${SRC_DIR}/ \
+		-L${CONDA_PREFIX}/lib \
+		-L${BUILD_DIR}/lib/ \
+		-larrow \
+		-lsimple-math \
+		-larrow-wrap \
+		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
+		-Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
+		-Wl,-rpath,${BUILD_DIR}/lib/libarrow-wrap.so \
+		-o ${BUILD_DIR}/lib/test_ir.o \
+		-v \
+		${BUILD_DIR}/lib/llarrow.o \
+		${BUILD_DIR}/lib/llfunction.o \
+		${PROJECT_ROOT}/tests/test_ir.cpp
+
+	echo "[II] file compiled."
+	chmod +x ${BUILD_DIR}/lib/test_ir.o
+	LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${BUILD_DIR}/lib" ${BUILD_DIR}/lib/test_ir.o

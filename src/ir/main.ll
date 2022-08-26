@@ -5,10 +5,11 @@
 
 ; External declaration of the puts function
 declare i32 @puts(i8* nocapture) nounwind
-declare i32 @function()
+declare i32 @wrap_puts()
 declare i32 @simple_add(i32, i32)
 declare i32 @printf(i8*, ...)
-declare i8* @boolean_scalar()
+declare i8* @ir_arrow_scalar_bool(i32)
+declare float @ir_arrow_scalar_float(float)
 
 ; Definition of main function
 define i32 @main() {   ; i32()*
@@ -28,7 +29,7 @@ define i32 @main() {   ; i32()*
     ), i32 %result
   )
 
-  call i32 @function()
+  call i32 @wrap_puts()
 
   ret i32 0
 }
