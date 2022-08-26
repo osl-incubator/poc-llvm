@@ -92,9 +92,7 @@ test-externals:  llvm-ir-build-external
 		-Wl,-rpath,${REAL_PWD}/lib/libarrow-wrap.so \
 		-o test_externals.o \
 		-v \
-		test_externals.cpp \
-		${REAL_PWD}/lib/libsimple-math.so \
-		${REAL_PWD}/lib/libarrow-wrap.so
+		test_externals.cpp
 
 
 	echo "[II] file compiled."
