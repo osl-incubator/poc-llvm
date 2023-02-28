@@ -1,0 +1,179 @@
+shell: bash
+groups:
+  - name: build
+    targets:
+      clean:
+        help: Remove build files
+        run: |
+          rm -rf build/
+          mkdir -p build
+
+      cpp-libs-file:
+        help: Build cpp lib files
+        args:
+          filename:
+            help: The cpp file name
+            type: string
+            required: true
+        run: |
+          set -ex
+
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=${PROJECT_ROOT}/build
+          BUILD_LIB_DIR=${BUILD_DIR}/lib
+          SRC_DIR=${PROJECT_ROOT}/cpp
+
+          mkdir -p ${BUILD_LIB_DIR}
+
+          clang++ -fPIC \
+            -I${CONDA_PREFIX}/include \
+            -I${SRC_DIR} \
+            -L${CONDA_PREFIX}/lib \
+            -L${BUILD_LIB_DIR}/lib \
+            -c ${SRC_DIR}/{{ args.filename }}.cpp \
+            -o ${BUILD_LIB_DIR}/{{ args.filename }}.o
+
+          clang -shared \
+            -o ${BUILD_LIB_DIR}/lib{{ args.filename }}.so \
+            ${BUILD_LIB_DIR}/{{ args.filename }}.o
+
+          ar -rv \
+            ${BUILD_LIB_DIR}/{{ args.filename }}.a \
+            ${BUILD_LIB_DIR}/{{ args.filename }}.o
+
+
+      cpp-libs:
+        dependencies:
+          - target: build.cpp-libs-file
+            args:
+              filename: custom-type
+          - target: build.cpp-libs-file
+            args:
+              filename: simple-math
+
+      llvm-ir-file:
+        help: llvm-ir-file
+        args:
+          file-ir:
+            help: FILE IR
+            type: string
+            required: true
+        run: |
+          set -ex
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          SRC_DIR=${PWD}
+
+          mkdir -p ${BUILD_DIR}/lib
+
+          cd $SRC_DIR
+
+          echo ">>> llc {{ args.file_ir }}.ll"
+          llc --relocation-model=pic \
+            $SRC_DIR/ir/{{ args.file_ir }}.ll \
+            -filetype=obj \
+            -o $BUILD_DIR/lib/ll{{ args.file_ir }}.o \
+            --load=$BUILD_DIR/lib
+
+      llvm-ir:
+        dependencies:
+          - target: build.cpp-libs
+          - target: build.llvm-ir-file
+            args:
+              file-ir: function
+          - target: build.llvm-ir-file
+            args:
+              file-ir: custom-types
+          - target: build.llvm-ir-file
+            args:
+              file-ir: main
+        run: |
+          set -ex
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          SRC_DIR=${PWD}
+
+          echo ">>> bundle .o files"
+          clang++ -v \
+            -fPIC \
+            -o $BUILD_DIR/pocllvmir \
+            -I$CONDA_PREFIX/include \
+            -I$SRC_DIR \
+            -L$BUILD_DIR/lib \
+            -L$CONDA_PREFIX/lib/ \
+            -fuse-ld=lld \
+            -larrow \
+            -lsimple-math \
+            -Wl,-rpath,$CONDA_PREFIX/lib/libarrow.so \
+            -Wl,-rpath,$BUILD_DIR/lib/libsimple-math.so \
+            -lstdc++ \
+            -v \
+            $BUILD_DIR/lib/llmain.o \
+            $BUILD_DIR/lib/llfunction.o \
+            $BUILD_DIR/lib/llcustom-types.o
+
+  - name: tests
+    targets:
+      cpp-libs:
+        dependencies:
+          - target: build.cpp-libs
+        run: |
+          set -ex
+
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=${PROJECT_ROOT}/build
+          SRC_DIR=${PROJECT_ROOT}/src
+
+          clang++ \
+            -fPIC \
+            -I${CONDA_PREFIX}/include \
+            -I${SRC_DIR}/ \
+            -L${CONDA_PREFIX}/lib \
+            -L${BUILD_DIR}/lib/ \
+            -larrow \
+            -lsimple-math \
+            -Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
+            -Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
+            -o ${BUILD_DIR}/lib/test_externals.o \
+            -v \
+            ${PROJECT_ROOT}/tests/test_externals.cpp
+
+
+          echo "[II] file compiled."
+          chmod +x ${BUILD_DIR}/lib/test_externals.o
+          LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${BUILD_DIR}/lib" ${BUILD_DIR}/lib/test_externals.o
+
+      llvm-ir:
+        dependencies:
+          - target: build.llvm-ir
+        run: |
+          BUILD_DIR=${PWD}/build
+          LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$BUILD_DIR/lib $BUILD_DIR/pocllvmir
+
+      llvm-ir-objects:
+        run:
+          set -ex
+
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          BUILD_LIB_DIR=$BUILD_DIR/lib
+          SRC_DIR=$PROJECT_ROOT/src
+
+          clang++ \
+            -fPIC \
+            -I$CONDA_PREFIX/include \
+            -I$SRC_DIR/ \
+            -L$CONDA_PREFIX/lib \
+            -L$BUILD_LIB_DIR/ \
+            -larrow \
+            -lsimple-math \
+            -Wl,-rpath,$BUILD_LIB_DIR/libsimple-math.so \
+            -o $BUILD_LIB_DIR/test_ir.o \
+            -v \
+            $BUILD_LIB_DIR/llcustom-types.o \
+            $BUILD_LIB_DIR/llfunction.o \
+            $PROJECT_ROOT/tests/test_ir.cpp
+
+          echo "[II] file compiled."
+          chmod +x $BUILD_DIR/lib/test_ir.o
+          LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$BUILD_DIR/lib" $BUILD_DIR/lib/test_ir.o

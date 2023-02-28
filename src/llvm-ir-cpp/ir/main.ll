@@ -8,8 +8,9 @@ declare i32 @puts(i8* nocapture) nounwind
 declare i32 @wrap_puts()
 declare i32 @simple_add(i32, i32)
 declare i32 @printf(i8*, ...)
-declare i8* @ir_arrow_scalar_bool(i32)
-declare float @ir_arrow_scalar_float(float)
+
+%BoolStruct = type { i8 }
+%FloatStruct = type { float }
 
 ; Definition of main function
 define i32 @main() {   ; i32()*
@@ -30,6 +31,11 @@ define i32 @main() {   ; i32()*
   )
 
   call i32 @wrap_puts()
+
+  %f_struct = alloca %FloatStruct
+
+  %5 = getelementptr %FloatStruct, %FloatStruct * %f_struct, i32 0, i32 0
+  ; store float %5, float 0x400928F5C0000000
 
   ret i32 0
 }

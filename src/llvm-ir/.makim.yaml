@@ -1,0 +1,99 @@
+shell: bash
+groups:
+  - name: build
+    targets:
+      clean:
+        help: Remove build files
+        run: |
+          rm -rf build/
+          mkdir -p build
+
+      llvm-ir-file:
+        help: llvm-ir-file
+        args:
+          file:
+            help: FILE IR
+            type: string
+            required: true
+        run: |
+          set -ex
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          SRC_DIR=${PWD}
+
+          mkdir -p ${BUILD_DIR}/lib
+
+          cd $SRC_DIR
+
+          echo ">>> llc {{ args.file }}.ll"
+          llc --relocation-model=pic \
+            $SRC_DIR/ir/{{ args.file }}.ll \
+            -filetype=obj \
+            -o $BUILD_DIR/lib/ll{{ args.file }}.o \
+            # --load=$BUILD_DIR/lib
+
+      llvm-ir:
+        dependencies:
+          - target: build.llvm-ir-file
+            args:
+              file: function
+          - target: build.llvm-ir-file
+            args:
+              file: custom-types
+          - target: build.llvm-ir-file
+            args:
+              file: main
+        run: |
+          set -ex
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          SRC_DIR=${PWD}
+
+          echo ">>> bundle .o files"
+          clang++ -v \
+            -fPIC \
+            -o $BUILD_DIR/pocllvmir \
+            -I$CONDA_PREFIX/include \
+            -I$SRC_DIR \
+            -L$BUILD_DIR/lib \
+            -L$CONDA_PREFIX/lib/ \
+            -fuse-ld=lld \
+            -lstdc++ \
+            -v \
+            $BUILD_DIR/lib/llmain.o \
+            $BUILD_DIR/lib/llfunction.o \
+            $BUILD_DIR/lib/llcustom-types.o
+
+  - name: tests
+    targets:
+      llvm-ir:
+        dependencies:
+          - target: build.llvm-ir
+        run: |
+          BUILD_DIR=${PWD}/build
+          LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$BUILD_DIR/lib $BUILD_DIR/pocllvmir
+
+      llvm-ir-objects:
+        run:
+          set -ex
+
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          BUILD_LIB_DIR=$BUILD_DIR/lib
+          SRC_DIR=$PROJECT_ROOT/src
+
+          clang++ \
+            -fPIC \
+            -I$CONDA_PREFIX/include \
+            -I$SRC_DIR/ \
+            -L$CONDA_PREFIX/lib \
+            -L$BUILD_LIB_DIR/ \
+            -o $BUILD_LIB_DIR/test_ir.o \
+            -v \
+            $BUILD_LIB_DIR/llcustom-types.o \
+            $BUILD_LIB_DIR/llfunction.o \
+            $PROJECT_ROOT/tests/test_ir.cpp
+
+          echo "[II] file compiled."
+          chmod +x $BUILD_DIR/lib/test_ir.o
+          LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$BUILD_DIR/lib" $BUILD_DIR/lib/test_ir.o

@@ -27,50 +27,40 @@ build-cpp: clean-optional
 	meson compile -C build
 
 .ONESHELL:
+.PHONY: build-cpp-libs-file
+build-cpp-libs-file:
+	set -ex
+
+	$(eval PROJECT_ROOT :=${PWD})
+	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval BUILD_LIB_DIR :=${BUILD_DIR}/lib)
+	$(eval SRC_DIR :=${PROJECT_ROOT}/src)
+
+	mkdir -p ${BUILD_LIB_DIR}
+
+	clang++ -fPIC \
+		-I${CONDA_PREFIX}/include \
+		-I${SRC_DIR} \
+		-L${CONDA_PREFIX}/lib \
+		-L${BUILD_LIB_DIR}/lib \
+		-c ${SRC_DIR}/${CPP_FILE_NAME}.cpp \
+		-o ${BUILD_LIB_DIR}/${CPP_FILE_NAME}.o
+
+	clang -shared \
+		-o ${BUILD_LIB_DIR}/lib${CPP_FILE_NAME}.so \
+		${BUILD_LIB_DIR}/${CPP_FILE_NAME}.o
+
+	ar -rv \
+		${BUILD_LIB_DIR}/${CPP_FILE_NAME}.a \
+		${BUILD_LIB_DIR}/${CPP_FILE_NAME}.o
+
+
+.ONESHELL:
 .PHONY: build-cpp-libs
 build-cpp-libs: build-cpp
 	set -ex
-	mkdir -p build/lib
-
-	cd src
-
-	# create the "simple-math" object
-	clang++ -fPIC \
-		-I${CONDA_PREFIX}/include \
-		-I./ \
-		-L${CONDA_PREFIX}/lib \
-		-c simple-math.cpp \
-		-o ../build/lib/simple-math.o
-
-	# create the "simple-math" shared object
-	clang -shared \
-		-o ../build/lib/libsimple-math.so \
-		../build/lib/simple-math.o
-
-	# create the "simple-math" static object
-	ar -rv \
-		../build/lib/simple-math.a \
-		../build/lib/simple-math.o
-
-	# create the arrow-wrap object
-	clang++ -fPIC \
-		-I${CONDA_PREFIX}/include \
-		-I./ \
-		-L${CONDA_PREFIX}/lib \
-		-larrow \
-		-c \
-		-o ../build/lib/arrow-wrap.o \
-		arrow-wrap.cpp
-
-	# create the arrow-wrap shared object
-	clang -shared \
-		-o ../build/lib/libarrow-wrap.so \
-		../build/lib/arrow-wrap.o
-
-	# create the arrow-wrap static object
-	ar -rv \
-		../build/lib/arrow-wrap.a \
-		../build/lib/arrow-wrap.o
+	$(MAKE) build-cpp-libs-file CPP_FILE_NAME=simple-math
+	$(MAKE) build-cpp-libs-file CPP_FILE_NAME=arrow-wrap
 
 .ONESHELL:
 .PHONY: test-cpp-libs
@@ -129,6 +119,7 @@ build-llvm-ir: build-cpp-libs
 
 	$(MAKE) build-llvm-ir-file FILE_IR=function
 	$(MAKE) build-llvm-ir-file FILE_IR=arrow
+	$(MAKE) build-llvm-ir-file FILE_IR=custom-types
 	$(MAKE) build-llvm-ir-file FILE_IR=main
 
 	echo ">>> bundle .o files"
@@ -150,6 +141,7 @@ build-llvm-ir: build-cpp-libs
 		-v \
 		${BUILD_DIR}/lib/llmain.o \
 		${BUILD_DIR}/lib/llfunction.o \
+		${BUILD_DIR}/lib/llcustom-types.o \
 		${BUILD_DIR}/lib/llarrow.o
 
 
@@ -157,8 +149,8 @@ build-llvm-ir: build-cpp-libs
 .PHONY: test-llvm-ir
 test-llvm-ir: build-llvm-ir
 	$(eval BUILD_DIR :=${PWD}/build)
-	cd ${BUILD_DIR}
-	LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${BUILD_DIR}/lib ./pocllvmir
+
+	LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:${BUILD_DIR}/lib ${BUILD_DIR}/pocllvmir
 
 
 .ONESHELL:
@@ -168,6 +160,7 @@ test-llvm-ir-objects:
 
 	$(eval PROJECT_ROOT :=${PWD})
 	$(eval BUILD_DIR :=${PROJECT_ROOT}/build)
+	$(eval BUILD_LIB_DIR :=${BUILD_DIR}/lib)
 	$(eval SRC_DIR :=${PROJECT_ROOT}/src)
 
 	clang++ \
@@ -175,17 +168,18 @@ test-llvm-ir-objects:
 		-I${CONDA_PREFIX}/include \
 		-I${SRC_DIR}/ \
 		-L${CONDA_PREFIX}/lib \
-		-L${BUILD_DIR}/lib/ \
+		-L${BUILD_LIB_DIR}/ \
 		-larrow \
 		-lsimple-math \
 		-larrow-wrap \
 		-Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-		-Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
-		-Wl,-rpath,${BUILD_DIR}/lib/libarrow-wrap.so \
-		-o ${BUILD_DIR}/lib/test_ir.o \
+		-Wl,-rpath,${BUILD_LIB_DIR}/libsimple-math.so \
+		-Wl,-rpath,${BUILD_LIB_DIR}/libarrow-wrap.so \
+		-o ${BUILD_LIB_DIR}/test_ir.o \
 		-v \
-		${BUILD_DIR}/lib/llarrow.o \
-		${BUILD_DIR}/lib/llfunction.o \
+		${BUILD_LIB_DIR}/llarrow.o \
+		${BUILD_LIB_DIR}/llcustom-types.o \
+		${BUILD_LIB_DIR}/llfunction.o \
 		${PROJECT_ROOT}/tests/test_ir.cpp
 
 	echo "[II] file compiled."

@@ -1,4 +1,4 @@
-name: pocllvm
+name: poc-llvm
 channels:
 - nodefaults
 - conda-forge
@@ -19,5 +19,8 @@ dependencies:
 - arrow-c-glib 9.*
 - cli11
 - glog
+- pip
 # dev
 - pre-commit
+- pip:
+  - makim 1.6.0
