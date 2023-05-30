@@ -1,6 +1,6 @@
 shell: bash
 groups:
-  - name: build
+  build:
     targets:
       clean:
         help: Remove build files
@@ -112,7 +112,7 @@ groups:
             $BUILD_DIR/lib/llfunction.o \
             $BUILD_DIR/lib/llcustom-types.o
 
-  - name: tests
+  tests:
     targets:
       cpp-libs:
         dependencies:

@@ -1,83 +1,80 @@
+version: "1.0"
 shell: bash
+env:
+  CFLAGS_EXTRA: "\
+    -fsanitize-address-use-after-scope\
+    "
+  # use it for ASAN and LSAN
+  SAN_OPTIONS_DEFAULT: "\
+    fast_unwind_on_malloc=0\
+    :verbosity=1\
+    :log_threads=1\
+    :debug=true\
+    :sleep_before_dying=10\
+    :print_stats=1\
+    :strict_string_checks=1\
+    :detect_stack_use_after_return=1\
+    :check_initialization_order=1\
+    :strict_init_order=1\
+    :atexit=1\
+    :print_legend=1\
+    :detect_leaks=1\
+    "
+  MESON_EXTRA: "-Db_coverage=true \
+    -Doptimization=0 \
+    -Db_sanitize=address \
+    "
 groups:
-  - name: build
+  poc-llvm:
     targets:
       clean:
-        help: Remove build files
         run: |
-          rm -rf build/
+          rm -rf build/*
+          rm -f bin/*
           mkdir -p build
 
-      cpp-libs-file:
-        help: Build cpp lib files
+      build:
+        help: build sources
+        dependencies:
+          - target: poc-llvm.clean
+            if: {{ args.clean }}
         args:
-          filename:
-            help: The cpp file name
+          build-type:
+            help: "Specify the build type: 'plain', 'debug', 'debugoptimized', 'release', 'minsize', 'custom'"
             type: string
-            required: true
+            default: release
+          meson-extra:
+            help: meson extra arguments
+            type: string
+            default: ""
+          clean:
+            help: "Clean build files"
+            type: "bool"
+            action: "store-true"
         run: |
-          set -ex
+            set -ex
+            meson setup \
+              --prefix ${CONDA_PREFIX} \
+              --libdir ${CONDA_PREFIX}/lib \
+              --includedir ${CONDA_PREFIX}/include \
+              --buildtype={{ args.build_type }} \
+              --native-file meson.native {{ args.meson_extra or env.MESON_EXTRA }} \
+              build .
+            meson compile -C build
 
-          PROJECT_ROOT=${PWD}
-          BUILD_DIR=${PROJECT_ROOT}/build
-          BUILD_LIB_DIR=${BUILD_DIR}/lib
-          SRC_DIR=${PROJECT_ROOT}/cpp
+      install:
+        help: install the program
+        run: meson install -C build
 
-          mkdir -p ${BUILD_LIB_DIR}
+      run-tests:
+        help: run tests
+        env:
+          ASAN_OPTIONS_DEFAULT: {{ env.SAN_OPTIONS_DEFAULT }}
+          LSAN_OPTIONS_DEFAULT: {{ env.SAN_OPTIONS_DEFAULT }}
+        run: ./build/pocllvmcpp
 
-          clang++ -fPIC \
-            -I${CONDA_PREFIX}/include \
-            -I${SRC_DIR} \
-            -L${CONDA_PREFIX}/lib \
-            -L${BUILD_LIB_DIR}/lib \
-            -c ${SRC_DIR}/{{ args.filename }}.cpp \
-            -o ${BUILD_LIB_DIR}/{{ args.filename }}.o
-
-          clang -shared \
-            -o ${BUILD_LIB_DIR}/lib{{ args.filename }}.so \
-            ${BUILD_LIB_DIR}/{{ args.filename }}.o
-
-          ar -rv \
-            ${BUILD_LIB_DIR}/{{ args.filename }}.a \
-            ${BUILD_LIB_DIR}/{{ args.filename }}.o
-
-
-      cpp-libs:
+      all:
+        help: run build and tests
         dependencies:
-          - target: build.cpp-libs-file
-            args:
-              filename: custom-type
-          - target: build.cpp-libs-file
-            args:
-              filename: simple-math
-
-  - name: tests
-    targets:
-      cpp-libs:
-        dependencies:
-          - target: build.cpp-libs
-        run: |
-          set -ex
-
-          PROJECT_ROOT=${PWD}
-          BUILD_DIR=${PROJECT_ROOT}/build
-          SRC_DIR=${PROJECT_ROOT}/src
-
-          clang++ \
-            -fPIC \
-            -I${CONDA_PREFIX}/include \
-            -I${SRC_DIR}/ \
-            -L${CONDA_PREFIX}/lib \
-            -L${BUILD_DIR}/lib/ \
-            -larrow \
-            -lsimple-math \
-            -Wl,-rpath,${CONDA_PREFIX}/lib/libarrow.so \
-            -Wl,-rpath,${BUILD_DIR}/lib/libsimple-math.so \
-            -o ${BUILD_DIR}/lib/test_externals.o \
-            -v \
-            ${PROJECT_ROOT}/tests/test_externals.cpp
-
-
-          echo "[II] file compiled."
-          chmod +x ${BUILD_DIR}/lib/test_externals.o
-          LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${BUILD_DIR}/lib" ${BUILD_DIR}/lib/test_externals.o
+          - target: poc-llvm.build
+          - target: poc-llvm.run-tests

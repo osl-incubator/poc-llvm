@@ -23,4 +23,4 @@ dependencies:
 # dev
 - pre-commit
 - pip:
-  - makim 1.6.0
+  - makim==1.8.1

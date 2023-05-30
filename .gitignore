@@ -32,6 +32,7 @@
 *.app
 
 build/*
+src/**/build/*
 bin/*
 _tmp/*
 

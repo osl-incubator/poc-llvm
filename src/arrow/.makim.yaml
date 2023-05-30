@@ -1,6 +1,6 @@
 shell: bash
 groups:
-  build:
+  llvm-ir:
     targets:
       clean:
         help: Remove build files
@@ -8,8 +8,8 @@ groups:
           rm -rf build/
           mkdir -p build
 
-      llvm-ir-file:
-        help: llvm-ir-file
+      build-file:
+        help: build ir file
         args:
           file:
             help: FILE IR
@@ -32,15 +32,16 @@ groups:
             -o $BUILD_DIR/lib/ll{{ args.file }}.o \
             # --load=$BUILD_DIR/lib
 
-      llvm-ir:
+      build:
+        args:
+          clean:
+            help: clean build files
+            type: bool
+            action: store_true
         dependencies:
-          - target: build.llvm-ir-file
-            args:
-              file: function
-          - target: build.llvm-ir-file
-            args:
-              file: custom-types
-          - target: build.llvm-ir-file
+          - target: llvm-ir.clean
+            if: {{ args.clean }}
+          - target: llvm-ir.build-file
             args:
               file: main
         run: |
@@ -57,23 +58,19 @@ groups:
             -I$SRC_DIR \
             -L$BUILD_DIR/lib \
             -L$CONDA_PREFIX/lib/ \
+            -larrow-glib \
             -fuse-ld=lld \
             -lstdc++ \
             -v \
-            $BUILD_DIR/lib/llmain.o \
-            $BUILD_DIR/lib/llfunction.o \
-            $BUILD_DIR/lib/llcustom-types.o
-
-  tests:
-    targets:
-      llvm-ir:
+            $BUILD_DIR/lib/llmain.o
+      test:
         dependencies:
-          - target: build.llvm-ir
+          - target: llvm-ir.build
         run: |
           BUILD_DIR=${PWD}/build
           LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$BUILD_DIR/lib $BUILD_DIR/pocllvmir
 
-      llvm-ir-objects:
+      test-objects:
         run:
           set -ex
 
@@ -97,3 +94,56 @@ groups:
           echo "[II] file compiled."
           chmod +x $BUILD_DIR/lib/test_ir.o
           LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$BUILD_DIR/lib" $BUILD_DIR/lib/test_ir.o
+
+  cpp:
+    targets:
+      clean:
+        help: Remove build files
+        run: |
+          rm -rf build/
+          mkdir -p build
+
+      build:
+        args:
+          clean:
+            help: clean build files
+            type: bool
+            action: store_true
+        dependencies:
+          - target: cpp.clean
+            if: {{ args.clean }}
+        shell: bash
+        run: |
+          set -ex
+          PROJECT_ROOT=${PWD}
+          BUILD_DIR=$PROJECT_ROOT/build
+          SRC_DIR=${PWD}
+
+          echo ">>> build cpp files"
+          clang++ -v \
+            `llvm-config --cxxflags` \
+            `llvm-config --ldflags --libs core executionengine interpreter analysis native bitwriter` \
+            `pkg-config --cflags --libs arrow-glib` \
+            -fPIC \
+            -I$CONDA_PREFIX/include \
+            -I$SRC_DIR \
+            -L$BUILD_DIR/lib \
+            -L$CONDA_PREFIX/lib/ \
+            -larrow-glib \
+            -fuse-ld=lld \
+            -lstdc++ \
+            cpp/main.cpp \
+            -o $BUILD_DIR/cppmain
+
+      test:
+        args:
+          build:
+            help: Use this argument if you want to build it again
+            type: bool
+            action: store_true
+        dependencies:
+          - target: cpp.build
+            if: {{ args.build }}
+        run: |
+          BUILD_DIR=${PWD}/build
+          LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$BUILD_DIR/lib $BUILD_DIR/cppmain
